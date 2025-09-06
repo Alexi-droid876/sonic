@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>No dejes caer la pelota</title>
+  <style>
+    body { background: #222; color: #fff; text-align: center; }
+    #gameCanvas { background: #333; display: block; margin: 30px auto; border: 2px solid #fff; }
+    .hidden { display: none; }
+    .selector {
+      margin-top: 100px;
+    }
+    .selector button {
+      font-size: 1.5rem;
+      padding: 20px 40px;
+      margin: 20px;
+      border-radius: 10px;
+      border: none;
+      background: #444;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 2px 2px 8px #111;
+    }
+    .selector button:active {
+      background: #0f0;
+      color: #222;
+    }
+    .controls {
+      margin-top: 20px;
+      display: flex;
+      justify-content: center;
+      gap: 40px;
+    }
+    .control-btn {
+      font-size: 2rem;
+      padding: 15px 30px;
+      border-radius: 10px;
+      border: none;
+      background: #444;
+      color: #fff;
+      box-shadow: 2px 2px 8px #111;
+      user-select: none;
+      touch-action: manipulation;
+    }
+    .control-btn:active {
+      background: #0f0;
+      color: #222;
+    }
+    #score {
+      font-size: 1.5rem;
+      margin-top: 10px;
+      margin-bottom: 0;
+    }
+    #win-link {
+      display: none;
+      margin-top: 30px;
+      font-size: 1.2rem;
+      background: #0f0;
+      color: #222;
+      padding: 12px 24px;
+      border-radius: 8px;
+      text-decoration: none;
+      font-weight: bold;
+      box-shadow: 2px 2px 8px #111;
+    }
+    #win-link:hover {
+      background: #ff0;
+      color: #000;
+    }
+    #pauseBtn {
+      margin-top: 10px;
+      font-size: 1.1rem;
+      padding: 10px 30px;
+      border-radius: 8px;
+      border: none;
+      background: #444;
+      color: #fff;
+      cursor: pointer;
+      box-shadow: 2px 2px 8px #111;
+    }
+    #pauseBtn.paused {
+      background: #f90;
+      color: #222;
+    }
+  </style>
+</head>
+<body>
+  <div id="modeSelector" class="selector">
+    <h1>¿Cómo quieres jugar?</h1>
+    <button onclick="startGame('pc')">PC</button>
+    <button onclick="startGame('movil')">Móvil</button>
+  </div>
+
+  <div id="gameArea" class="hidden">
+    <h1>No dejes caer la pelota</h1>
+    <p id="score">Puntuación: 0</p>
+    <button id="pauseBtn">Pausar</button>
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <p id="instructions"></p>
+    <div class="controls hidden" id="mobileControls">
+      <button class="control-btn" id="leftBtn">&#8592;</button>
+      <button class="control-btn" id="rightBtn">&#8594;</button>
+    </div>
+    <a id="win-link" href="https://www.youtube.com/watch?v=T_NKi5KHUdI&list=RDT_NKi5KHUdI&start_radio=1" target="_blank">
+      ¡Ganaste! Haz clic aquí para tu premio 🎉
+    </a>
+  </div>
+
+  <script>
+    let mode = null;
+    let animationId = null;
+    let paused = false;
+
+    function startGame(selectedMode) {
+      mode = selectedMode;
+      document.getElementById('modeSelector').classList.add('hidden');
+      document.getElementById('gameArea').classList.remove('hidden');
+      if (mode === 'movil') {
+        document.getElementById('mobileControls').classList.remove('hidden');
+        document.getElementById('instructions').innerText = "Usa los botones para mover la barra";
+      } else {
+        document.getElementById('mobileControls').classList.add('hidden');
+        document.getElementById('instructions').innerText = "Usa las flechas izquierda y derecha para mover la barra";
+      }
+      initGame();
+    }
+
+    function initGame() {
+      const canvas = document.getElementById('gameCanvas');
+      const ctx = canvas.getContext('2d');
+      const scoreEl = document.getElementById('score');
+      const winLink = document.getElementById('win-link');
+      const pauseBtn = document.getElementById('pauseBtn');
+
+      // Barra
+      const barWidth = 80, barHeight = 15;
+      let barX = (canvas.width - barWidth) / 2;
+      const barY = canvas.height - barHeight - 10;
+      const barSpeed = 7;
+
+      // Pelota
+      let ballX = canvas.width / 2, ballY = 100;
+      let ballRadius = 12;
+      let ballSpeedX = 3, ballSpeedY = 4;
+
+      let rightPressed = false, leftPressed = false;
+      let gameOver = false;
+      let score = 0;
+      const maxScore = 200;
+      let won = false;
+
+      // Limpiar eventos previos
+      window.onkeydown = null;
+      window.onkeyup = null;
+
+      // PC: teclado
+      if (mode === 'pc') {
+        document.addEventListener('keydown', keyDownHandler);
+        document.addEventListener('keyup', keyUpHandler);
+      }
+
+      // Móvil: botones táctiles
+      if (mode === 'movil') {
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+        leftBtn.addEventListener('touchstart', leftTouchStart);
+        leftBtn.addEventListener('touchend', leftTouchEnd);
+        rightBtn.addEventListener('touchstart', rightTouchStart);
+        rightBtn.addEventListener('touchend', rightTouchEnd);
+        leftBtn.addEventListener('mousedown', leftMouseDown);
+        leftBtn.addEventListener('mouseup', leftMouseUp);
+        rightBtn.addEventListener('mousedown', rightMouseDown);
+        rightBtn.addEventListener('mouseup', rightMouseUp);
+      }
+
+      pauseBtn.onclick = function() {
+        paused = !paused;
+        if (paused) {
+          pauseBtn.textContent = "Reanudar";
+          pauseBtn.classList.add('paused');
+          cancelAnimationFrame(animationId);
+        } else {
+          pauseBtn.textContent = "Pausar";
+          pauseBtn.classList.remove('paused');
+          animationId = requestAnimationFrame(draw);
+        }
+      };
+
+      function keyDownHandler(e) {
+        if (e.key === 'ArrowRight') rightPressed = true;
+        if (e.key === 'ArrowLeft') leftPressed = true;
+      }
+      function keyUpHandler(e) {
+        if (e.key === 'ArrowRight') rightPressed = false;
+        if (e.key === 'ArrowLeft') leftPressed = false;
+      }
+      function leftTouchStart(e) { e.preventDefault(); leftPressed = true; }
+      function leftTouchEnd(e) { e.preventDefault(); leftPressed = false; }
+      function rightTouchStart(e) { e.preventDefault(); rightPressed = true; }
+      function rightTouchEnd(e) { e.preventDefault(); rightPressed = false; }
+      function leftMouseDown() { leftPressed = true; }
+      function leftMouseUp() { leftPressed = false; }
+      function rightMouseDown() { rightPressed = true; }
+      function rightMouseUp() { rightPressed = false; }
+
+      function drawBar() {
+        ctx.fillStyle = '#0f0';
+        ctx.fillRect(barX, barY, barWidth, barHeight);
+      }
+
+      function drawBall() {
+        ctx.beginPath();
+        ctx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
+        ctx.fillStyle = '#ff0';
+        ctx.fill();
+        ctx.closePath();
+      }
+
+      function draw() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        drawBar();
+        drawBall();
+
+        // Mover barra
+        if (rightPressed && barX < canvas.width - barWidth) barX += barSpeed;
+        if (leftPressed && barX > 0) barX -= barSpeed;
+
+        // Mover pelota
+        ballX += ballSpeedX;
+        ballY += ballSpeedY;
+
+        // Rebote en paredes
+        if (ballX + ballRadius > canvas.width || ballX - ballRadius < 0) ballSpeedX *= -1;
+        if (ballY - ballRadius < 0) ballSpeedY *= -1;
+
+        // Rebote en barra
+        if (
+          ballY + ballRadius >= barY &&
+          ballX > barX &&
+          ballX < barX + barWidth &&
+          ballSpeedY > 0 // Solo cuenta si viene cayendo
+        ) {
+          ballSpeedY *= -1;
+          ballY = barY - ballRadius; // Evita que se quede pegada
+          if (!gameOver && !won) {
+            score += 50;
+            if (score > maxScore) score = maxScore;
+            scoreEl.textContent = "Puntuación: " + score;
+          }
+        }
+
+        // Game over
+        if (ballY + ballRadius > canvas.height && !won) {
+          ctx.font = "40px Arial";
+          ctx.fillStyle = "#f00";
+          ctx.fillText("¡Perdiste!", 110, 300);
+          gameOver = true;
+        }
+
+        // Ganar
+        if (score >= maxScore && !won) {
+          won = true;
+          ctx.font = "32px Arial";
+          ctx.fillStyle = "#0f0";
+          ctx.fillText("¡Ganaste!", 120, 300);
+          winLink.style.display = "inline-block";
+        }
+
+        if (!gameOver && !won && !paused) animationId = requestAnimationFrame(draw);
+      }
+
+      // Inicializar
+      paused = false;
+      pauseBtn.textContent = "Pausar";
+      pauseBtn.classList.remove('paused');
+      scoreEl.textContent = "Puntuación: 0";
+      winLink.style.display = "none";
+      animationId = requestAnimationFrame(draw);
+    }
+  </script>
+</body>
+</html>
